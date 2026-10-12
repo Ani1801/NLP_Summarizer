@@ -1,0 +1,26 @@
+fastapi
+uvicorn[standard]
+motor
+pyjwt
+bcrypt
+python-dotenv
+pydantic-settings
+email-validator
+python-multipart
+pymupdf
+langchain-core
+langchain-community
+langchain-text-splitters
+langchain-huggingface
+langchain-pinecone
+langchain-google-genai
+sentence-transformers
+pinecone
+google-generativeai
+reportlab
+python-docx
+redis
+google-auth
+pdfplumber
+torch  # local summarisation runtime
+transformers  # local summarisation models (LED)

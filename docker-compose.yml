@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: auditor-ai-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    networks:
+      - auditor-network
+
+  frontend:
+    build: ./frontend
+    container_name: auditor-ai-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - auditor-network
+
+  mongodb:
+    image: mongo:7
+    container_name: auditor-ai-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    networks:
+      - auditor-network
+
+volumes:
+  mongo-data:
+
+networks:
+  auditor-network:
+    driver: bridge
