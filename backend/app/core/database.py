@@ -7,7 +7,12 @@ _mongo_client: AsyncIOMotorClient = None
 
 def get_mongo_client() -> AsyncIOMotorClient:
     global _mongo_client
-    uri = os.getenv("MONGO_URI") or settings.MONGO_URI
+    uri = os.getenv("MONGO_URI") or settings.MONGO_URI or ""
+    # Clean leading/trailing spaces, quotes, or accidental "MONGO_URI=" prefix
+    uri = uri.strip().strip('"').strip("'")
+    if uri.startswith("MONGO_URI="):
+        uri = uri.split("MONGO_URI=", 1)[1].strip().strip('"').strip("'")
+
     if _mongo_client is None or getattr(_mongo_client, "_target_uri", None) != uri:
         _mongo_client = AsyncIOMotorClient(
             uri,

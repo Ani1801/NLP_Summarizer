@@ -15,7 +15,8 @@ app = FastAPI(title="Auditor AI Backend")
 @app.on_event("startup")
 async def on_startup():
     logger.info("Starting up Auditor AI Backend...")
-    await init_db_indexes()
+    import asyncio
+    asyncio.create_task(init_db_indexes())
 
 
 # 1. Expanded Origins — localhost for dev + production URL from env
