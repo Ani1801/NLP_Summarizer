@@ -1,10 +1,20 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas.user import UserCreate, UserLogin, Token, GoogleToken, ProfileUpdate, PasswordUpdate, UserResponse
 from app.services.auth_service import AuthService
 from app.services.google_auth_service import GoogleAuthService
 from app.api.deps import get_db, get_current_user
+from app.core.config import settings
 
 router = APIRouter()
+
+@router.get("/google/config")
+async def google_auth_config():
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google authentication is not configured on this server.",
+        )
+    return {"client_id": settings.GOOGLE_CLIENT_ID}
 
 @router.post("/signup", response_model=Token)
 async def signup(user: UserCreate, db = Depends(get_db)):

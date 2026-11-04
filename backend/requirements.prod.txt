@@ -1,0 +1,27 @@
+fastapi
+uvicorn[standard]
+motor
+pyjwt
+bcrypt
+python-dotenv
+pydantic-settings
+email-validator
+python-multipart
+pymupdf
+langchain-core
+langchain-community
+langchain-text-splitters
+langchain-huggingface
+langchain-pinecone
+langchain-google-genai
+sentence-transformers
+pinecone
+google-generativeai
+reportlab
+python-docx
+redis
+google-auth
+pdfplumber
+# torch is installed via CPU wheel in Dockerfile to save 2GB+ image size
+# transformers is omitted; production uses SUMMARY_PROVIDER=gemini
+

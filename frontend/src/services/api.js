@@ -15,7 +15,7 @@
  *   this event and redirects to login — no manual wiring required.
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 const getHeaders = (isFormData = false) => {
   const token = localStorage.getItem('token');

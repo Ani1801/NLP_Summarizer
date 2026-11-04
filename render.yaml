@@ -5,13 +5,13 @@ services:
   # Backend API
   - type: web
     name: auditor-ai-backend
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    rootDir: backend
+    runtime: docker
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile
+    plan: free
     envVars:
       - key: SECRET_KEY
-        sync: false
+        generateValue: true
       - key: MONGO_URI
         sync: false
       - key: DATABASE_NAME
@@ -21,23 +21,33 @@ services:
       - key: PINECONE_API_KEY
         sync: false
       - key: PINECONE_INDEX_NAME
-        sync: false
+        value: "legal-docs"
       - key: PINECONE_HOST
         sync: false
       - key: REDIS_URL
         sync: false
       - key: CORS_ORIGIN
         sync: false
-      - key: PYTHON_VERSION
-        value: "3.11.0"
+      - key: SUMMARY_PROVIDER
+        value: "gemini"
+      - key: SUMMARIZATION_USE_INSTRUCTION
+        value: "true"
+      - key: SUMMARIZATION_DEVICE
+        value: "cpu"
 
-  # Frontend (Static Site)
+  # Frontend (Static Site on Render - or deploy to Vercel)
   - type: web
     name: auditor-ai-frontend
     runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     rootDir: frontend
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: auditor-ai-backend
+          property: host
     routes:
       - type: rewrite
         source: /*

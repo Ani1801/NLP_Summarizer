@@ -25,12 +25,16 @@ origins = [
     "http://localhost:3000",
 ]
 if CORS_ORIGIN:
-    origins.append(CORS_ORIGIN)
+    for o in CORS_ORIGIN.split(","):
+        cleaned = o.strip().rstrip("/")
+        if cleaned and cleaned not in origins:
+            origins.append(cleaned)
 
-# 2. CORS Middleware
+# 2. CORS Middleware (supports explicit origins + any vercel preview/prod subdomain)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

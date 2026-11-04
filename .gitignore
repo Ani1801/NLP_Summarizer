@@ -49,3 +49,6 @@ yarn-error.log*
 .tox/
 coverage.xml
 htmlcov/
+
+# Nested unzipped folder
+NLP_SUMMARIZER/

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Scale, Loader2, AlertCircle, UserPlus, ArrowRight } from 'lucide-react';
+import api from '../services/api';
 
 /* ─────────────────────────────────────────────
    Google Identity Services button component.
@@ -10,20 +11,52 @@ import { Scale, Loader2, AlertCircle, UserPlus, ArrowRight } from 'lucide-react'
    ───────────────────────────────────────────── */
 const GoogleSignInButton = ({ onSuccess, onError, disabled }) => {
   const containerRef = useRef(null);
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+  const [clientId, setClientId] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+
+  onSuccessRef.current = onSuccess;
+  onErrorRef.current = onError;
 
   useEffect(() => {
-    if (!clientId || clientId === 'your-google-client-id.apps.googleusercontent.com') return;
+    let active = true;
 
+    api.get('/api/auth/google/config')
+      .then(({ client_id }) => {
+        if (!client_id) {
+          throw new Error('Google authentication is not configured on this server.');
+        }
+        if (active) setClientId(client_id);
+      })
+      .catch((error) => {
+        if (active) {
+          setLoadError(error.message || 'Could not load Google sign-in configuration.');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!clientId) return undefined;
+
+    let active = true;
     const initGoogle = () => {
-      if (!window.google?.accounts?.id) return;
+      if (!active) return;
+      if (!window.google?.accounts?.id) {
+        setLoadError('Google Identity Services could not be loaded.');
+        return;
+      }
       window.google.accounts.id.initialize({
         client_id: clientId,
         callback: (response) => {
           if (response.credential) {
-            onSuccess(response.credential);
+            onSuccessRef.current(response.credential);
           } else {
-            onError('Google sign-in was cancelled or failed.');
+            onErrorRef.current('Google sign-in was cancelled or failed.');
           }
         },
         auto_select: false,
@@ -39,25 +72,50 @@ const GoogleSignInButton = ({ onSuccess, onError, disabled }) => {
         });
       }
     };
+    const handleScriptError = () => {
+      if (active) setLoadError('Google Identity Services could not be loaded.');
+    };
 
-    // Load the Google Identity Services script if not already present
     if (window.google?.accounts?.id) {
       initGoogle();
     } else {
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = initGoogle;
-      document.head.appendChild(script);
-    }
-  }, [clientId, onSuccess, onError]);
+      let script = document.getElementById('google-identity-services');
+      const shouldAppend = !script;
+      if (!script) {
+        script = document.createElement('script');
+        script.id = 'google-identity-services';
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+      }
+      script.addEventListener('load', initGoogle);
+      script.addEventListener('error', handleScriptError);
+      if (shouldAppend) document.head.appendChild(script);
 
-  if (!clientId || clientId === 'your-google-client-id.apps.googleusercontent.com') {
+      return () => {
+        active = false;
+        script.removeEventListener('load', initGoogle);
+        script.removeEventListener('error', handleScriptError);
+      };
+    }
+    return () => {
+      active = false;
+    };
+  }, [clientId]);
+
+  if (loadError) {
     return (
       <div className="w-full py-2.5 px-4 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs text-slate-500 dark:text-slate-400 text-center font-medium">
-        Google Sign-In not configured — set{' '}
-        <code className="font-mono bg-slate-100 dark:bg-slate-700 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code> to enable
+        Google Sign-In unavailable: {loadError}
+      </div>
+    );
+  }
+
+  if (!clientId) {
+    return (
+      <div className="w-full py-2.5 px-4 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-xs text-slate-500 dark:text-slate-400 text-center font-medium flex items-center justify-center gap-2">
+        <Loader2 size={14} className="animate-spin" />
+        Loading Google Sign-In…
       </div>
     );
   }
