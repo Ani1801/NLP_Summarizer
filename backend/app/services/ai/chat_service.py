@@ -5,16 +5,16 @@ Utilizes the google-genai SDK to generate structured, strictly grounded legal re
 with page-number and clause-type citations. Prohibits hallucination and outside knowledge.
 """
 
+import json
 import os
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from pydantic import BaseModel, Field
-from google import genai
-from google.genai import types
 
+from app.core.config import settings
 from app.core.logging import logger
 from app.services.ai.query_service import query_document_chunks
 
@@ -70,8 +70,8 @@ STRICT CONSTRAINTS & COMPLIANCE RULES:
 """
 
 
-# 3. Google GenAI Client Initialization
-def _get_genai_client() -> genai.Client:
+# 3. Google GenAI API Key
+def _get_api_key() -> str:
     api_key = (
         os.getenv("GEMINI_API_KEY")
         or os.getenv("GOOGLE_API_KEY")
@@ -79,7 +79,7 @@ def _get_genai_client() -> genai.Client:
     ).strip().strip('"').strip("'")
     if not api_key:
         raise ValueError("Neither GEMINI_API_KEY nor GOOGLE_API_KEY is configured in the environment.")
-    return genai.Client(api_key=api_key)
+    return api_key
 
 
 async def generate_grounded_response(
@@ -91,7 +91,7 @@ async def generate_grounded_response(
     RAG generation pipeline:
     1. Retrieves relevant document chunks via query_document_chunks.
     2. If no chunks found (or low similarity), returns a fallback response without LLM call.
-    3. Calls gemini-2.5-flash with temperature=0.0 and ChatResponse JSON schema.
+    3. Calls Gemini with temperature=0.0 and ChatResponse schema.
     4. Returns clean, structured response aligning with frontend requirements.
     """
     # Step 1: Retrieve context chunks from Pinecone / vector store
@@ -120,7 +120,9 @@ async def generate_grounded_response(
 
     # Step 4: Invoke Gemini with resilient model fallback and structured output schema
     try:
-        client = _get_genai_client()
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        api_key = _get_api_key()
         candidate_models = [
             "gemini-1.5-flash",
             "gemini-2.0-flash",
@@ -129,18 +131,28 @@ async def generate_grounded_response(
         parsed: Optional[ChatResponse] = None
         for model_name in candidate_models:
             try:
-                response = client.models.generate_content(
+                llm = ChatGoogleGenerativeAI(
                     model=model_name,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.0,
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        response_mime_type="application/json",
-                        response_schema=ChatResponse
-                    )
+                    google_api_key=api_key,
+                    temperature=0.0,
                 )
-                if response and response.parsed:
-                    parsed = response.parsed
+                full_prompt = f"{SYSTEM_INSTRUCTION}\n\n{user_prompt}"
+                try:
+                    structured_llm = llm.with_structured_output(ChatResponse)
+                    parsed = await structured_llm.ainvoke(full_prompt)
+                except Exception:
+                    res = await llm.ainvoke(
+                        full_prompt
+                        + "\n\nRespond ONLY in valid JSON matching schema: "
+                        + '{"answer": "...", "citations": [{"page_number": 1, "clause_type": "...", "verbatim_quote": "...", "section": "...", "text": "..."}]}'
+                    )
+                    content = res.content
+                    if isinstance(content, list):
+                        content = " ".join(str(p) for p in content)
+                    cleaned = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                    parsed = ChatResponse.model_validate(json.loads(cleaned))
+
+                if parsed:
                     break
             except Exception as model_err:
                 logger.warning(f"[ChatService] Model {model_name} failed: {model_err}")
@@ -165,9 +177,17 @@ async def generate_grounded_response(
                 "sources": result_citations
             }
 
-        # Fallback if parsed schema is somehow not returned
         return {
-            "answer": response.text or "I processed your document but could not format the output.",
+            "answer": "I processed your document but could not extract citations.",
+            "citations": [],
+            "sources": []
+        }
+
+    except Exception as e:
+        logger.error(f"[ChatService] Gemini generation error: {e}")
+        # Graceful fallback on API error
+        return {
+            "answer": "An error occurred while generating a grounded response from the AI model. Please try again.",
             "citations": [],
             "sources": []
         }

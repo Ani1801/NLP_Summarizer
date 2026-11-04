@@ -21,6 +21,7 @@ reportlab
 python-docx
 redis
 google-auth
+google-genai
 pdfplumber
 # torch is installed via CPU wheel in Dockerfile to save 2GB+ image size
 # transformers is omitted; production uses SUMMARY_PROVIDER=gemini

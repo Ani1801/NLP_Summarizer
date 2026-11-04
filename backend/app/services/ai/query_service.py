@@ -16,30 +16,38 @@ from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
 from app.core.logging import logger
 
-# 1. Module-level embedding model initialization (all-MiniLM-L6-v2, 384 dimensions)
-logger.info("[QueryService] Initializing sentence-transformers model 'all-MiniLM-L6-v2'...")
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+# 1. Lazy embedding model initialization (all-MiniLM-L6-v2, 384 dimensions)
+_embedding_model = None
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        logger.info("[QueryService] Initializing sentence-transformers model 'all-MiniLM-L6-v2'...")
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embedding_model
 
 # 2. Pinecone Index Connection
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "legal-auditor")
-PINECONE_HOST = os.getenv("PINECONE_HOST", "")
-
 _pinecone_index = None
 
 def get_pinecone_index():
     global _pinecone_index
-    if _pinecone_index is None and PINECONE_API_KEY:
-        try:
-            pc = Pinecone(api_key=PINECONE_API_KEY)
-            if PINECONE_HOST:
-                _pinecone_index = pc.Index(name=PINECONE_INDEX_NAME, host=PINECONE_HOST)
-            else:
-                _pinecone_index = pc.Index(name=PINECONE_INDEX_NAME)
-            logger.info(f"[QueryService] Connected to Pinecone index '{PINECONE_INDEX_NAME}'")
-        except Exception as e:
-            logger.warning(f"[QueryService] Failed to connect to Pinecone index: {e}")
-            _pinecone_index = None
+    if _pinecone_index is None:
+        from app.core.config import settings
+        api_key = (os.getenv("PINECONE_API_KEY") or getattr(settings, "PINECONE_API_KEY", "")).strip().strip('"').strip("'")
+        host = (os.getenv("PINECONE_HOST") or getattr(settings, "PINECONE_HOST", "")).strip().strip('"').strip("'")
+        index_name = (os.getenv("PINECONE_INDEX_NAME") or getattr(settings, "PINECONE_INDEX_NAME", "legal-auditor")).strip().strip('"').strip("'")
+        if api_key:
+            try:
+                pc = Pinecone(api_key=api_key)
+                if host:
+                    _pinecone_index = pc.Index(name=index_name, host=host)
+                else:
+                    _pinecone_index = pc.Index(name=index_name)
+                logger.info(f"[QueryService] Connected to Pinecone index '{index_name}'")
+            except Exception as e:
+                logger.warning(f"[QueryService] Failed to connect to Pinecone index: {e}")
+                _pinecone_index = None
     return _pinecone_index
 
 
@@ -69,7 +77,8 @@ def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5)
         return []
 
     # 1. Embed the query vector
-    query_vector = embedding_model.encode(query.strip()).tolist()
+    model = get_embedding_model()
+    query_vector = model.encode(query.strip()).tolist()
     results: List[Dict[str, Any]] = []
 
     namespace = f"user_{user_id}"
@@ -149,7 +158,11 @@ def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5)
 class QueryService:
     """Wrapper class providing backward compatibility for existing routes."""
     def __init__(self):
-        self.embedding_model = embedding_model
+        pass
+
+    @property
+    def embedding_model(self):
+        return get_embedding_model()
 
     def retrieve_relevant_chunks(
         self,
