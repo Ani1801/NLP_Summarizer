@@ -72,7 +72,11 @@ STRICT CONSTRAINTS & COMPLIANCE RULES:
 
 # 3. Google GenAI Client Initialization
 def _get_genai_client() -> genai.Client:
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    api_key = (
+        os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or getattr(settings, "GOOGLE_API_KEY", "")
+    ).strip().strip('"').strip("'")
     if not api_key:
         raise ValueError("Neither GEMINI_API_KEY nor GOOGLE_API_KEY is configured in the environment.")
     return genai.Client(api_key=api_key)
@@ -118,11 +122,9 @@ async def generate_grounded_response(
     try:
         client = _get_genai_client()
         candidate_models = [
-            "gemini-flash-lite-latest",
-            "gemini-3.6-flash",
-            "gemini-3.7-flash",
-            "gemini-flash-latest",
-            "gemini-2.5-flash",
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
         ]
         parsed: Optional[ChatResponse] = None
         for model_name in candidate_models:

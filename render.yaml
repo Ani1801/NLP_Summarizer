@@ -16,6 +16,8 @@ services:
         sync: false
       - key: DATABASE_NAME
         value: "auditor_ai"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: GOOGLE_API_KEY
         sync: false
       - key: PINECONE_API_KEY

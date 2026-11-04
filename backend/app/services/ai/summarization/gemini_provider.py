@@ -22,9 +22,8 @@ from app.services.ai.summarization.base import (
 )
 
 GEMINI_MODELS = [
-    "gemini-2.0-flash",
     "gemini-1.5-flash",
-    "gemini-1.5-flash-002",
+    "gemini-2.0-flash",
     "gemini-1.5-pro",
 ]
 
@@ -33,8 +32,14 @@ class GeminiSummarizer(SummarizationProvider):
     name = "gemini"
 
     def __init__(self, model_name: Optional[str] = None):
-        self.api_key = os.getenv("GOOGLE_API_KEY", "")
+        from app.core.config import settings
+
+        self.api_key = (
+            os.getenv("GOOGLE_API_KEY")
+            or getattr(settings, "GOOGLE_API_KEY", "")
+        ).strip().strip('"').strip("'")
         self._model_name = model_name or GEMINI_MODELS[0]
+        self._llm_cache: Dict[str, any] = {}
 
     @property
     def model_name(self) -> str:
@@ -46,6 +51,17 @@ class GeminiSummarizer(SummarizationProvider):
 
     def is_available(self) -> bool:
         return bool(self.api_key)
+
+    def _get_llm(self, model: str):
+        if model not in self._llm_cache:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            self._llm_cache[model] = ChatGoogleGenerativeAI(
+                model=model,
+                google_api_key=self.api_key,
+                temperature=0.1,
+            )
+        return self._llm_cache[model]
 
     def summarize(
         self,
@@ -60,11 +76,7 @@ class GeminiSummarizer(SummarizationProvider):
 
         for model in GEMINI_MODELS:
             try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-
-                llm = ChatGoogleGenerativeAI(
-                    model=model, google_api_key=self.api_key, temperature=0.1,
-                )
+                llm = self._get_llm(model)
                 response = llm.invoke(prompt)
                 content = response.content
                 if isinstance(content, list):

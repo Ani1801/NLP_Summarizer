@@ -35,13 +35,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from app.core.config import settings
 from app.core.logging import logger
 
-# Fallback chain: try each model in order. The `-latest` alias leads so the
-# chain keeps working when a pinned generation is retired by Google.
+# Fallback chain: valid production Gemini models
 GEMINI_MODELS = [
-    "gemini-flash-latest",
-    "gemini-3.8-flash",
-    "gemini-3.6-flash",
-    "gemini-pro-latest",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
 ]
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
@@ -249,7 +247,10 @@ SCHEMA
 
 class AuditService:
     def __init__(self):
-        self.api_key = os.getenv("GOOGLE_API_KEY")
+        self.api_key = (
+            os.getenv("GOOGLE_API_KEY")
+            or getattr(settings, "GOOGLE_API_KEY", "")
+        ).strip().strip('"').strip("'")
         # Set when a stage hits the per-day free-tier cap, so the remaining
         # stages can stop early instead of each burning through the model chain.
         self._quota_exhausted = False

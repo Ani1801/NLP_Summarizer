@@ -12,7 +12,26 @@ class Settings(BaseSettings):
     DATABASE_NAME: str = os.getenv("DATABASE_NAME", "auditor_ai")
     CORS_ORIGIN: str = os.getenv("CORS_ORIGIN", "")
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "uploads")
-    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_ID: str = (
+        os.getenv("GOOGLE_CLIENT_ID")
+        or "636746869652-cavus56dl87kb8t64r5fgcdvqq22o43g.apps.googleusercontent.com"
+    ).strip().strip('"').strip("'")
+    GOOGLE_API_KEY: str = (
+        os.getenv("GOOGLE_API_KEY")
+        or "AIzaSyA-6dWquB4eVuiwqiD0bDqjVTZoAyMzX-w"
+    ).strip().strip('"').strip("'")
+    PINECONE_API_KEY: str = (
+        os.getenv("PINECONE_API_KEY")
+        or "pcsk_5tB8vK_ADsaofuaVExvqhBqTWV6qFYC22AME9fjmQ2DXrDdf9wNqgV3ihwAHkrD6eujHR5"
+    ).strip().strip('"').strip("'")
+    PINECONE_INDEX_NAME: str = (
+        os.getenv("PINECONE_INDEX_NAME")
+        or "legal-auditor"
+    ).strip().strip('"').strip("'")
+    PINECONE_HOST: str = (
+        os.getenv("PINECONE_HOST")
+        or "https://legal-auditor-6f2uayg.svc.aped-4627-b74a.pinecone.io"
+    ).strip().strip('"').strip("'")
 
     # ── Embeddings / vector store ────────────────────────────────────────
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
@@ -31,8 +50,8 @@ class Settings(BaseSettings):
     CHUNK_MIN_TOKENS: int = int(os.getenv("CHUNK_MIN_TOKENS", "32"))
 
     # ── Summarisation ────────────────────────────────────────────────────
-    # "local" (default, no API key needed) or "gemini".
-    SUMMARY_PROVIDER: str = os.getenv("SUMMARY_PROVIDER", "local")
+    # "local" or "gemini" (default to gemini for cloud deployment).
+    SUMMARY_PROVIDER: str = os.getenv("SUMMARY_PROVIDER", "gemini")
     # The checkpoint must be fine-tuned for summarisation *of documents like
     # these*, which is a stricter requirement than "legal" or "long context":
     #   - `allenai/led-base-16384` is only pretrained and echoes its input.
