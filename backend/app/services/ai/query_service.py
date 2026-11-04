@@ -51,42 +51,24 @@ def get_pinecone_index():
     return _pinecone_index
 
 
-def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
+async def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Embeds the user query and searches Pinecone for document chunks.
-    
-    Args:
-        query: Natural language query from the user.
-        doc_id: Unique document or audit ID.
-        user_id: Authenticated user ID (Pinecone namespace: user_{user_id}).
-        top_k: Number of top matches to retrieve (default: 5).
-
-    Returns:
-        List of dicts: [
-            {
-                "text": str,
-                "page_number": int,
-                "clause_type": str,
-                "score": float
-            },
-            ...
-        ]
-        Chunks with similarity score < 0.25 are ignored.
+    Falls back to local index, and ultimately to MongoDB stored audit data.
     """
     if not query or not query.strip() or not doc_id:
         return []
 
-    # 1. Embed the query vector
-    model = get_embedding_model()
-    query_vector = model.encode(query.strip()).tolist()
     results: List[Dict[str, Any]] = []
 
-    namespace = f"user_{user_id}"
-    index = get_pinecone_index()
+    # 1. Embed query vector and search Pinecone / local index if available
+    try:
+        model = get_embedding_model()
+        query_vector = model.encode(query.strip()).tolist()
+        namespace = f"user_{user_id}"
+        index = get_pinecone_index()
 
-    if index is not None:
-        try:
-            # Query Pinecone with strict namespace isolation and doc_id filter
+        if index is not None:
             response = index.query(
                 namespace=namespace,
                 vector=query_vector,
@@ -94,28 +76,21 @@ def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5)
                 filter={"doc_id": {"$eq": doc_id}},
                 include_metadata=True
             )
-
             matches = response.get("matches", []) if isinstance(response, dict) else getattr(response, "matches", [])
             for match in matches:
                 score = float(getattr(match, "score", 0.0) if hasattr(match, "score") else match.get("score", 0.0))
-                
-                # Ignore scores < 0.25
                 if score < 0.25:
                     continue
-
                 meta = getattr(match, "metadata", {}) if hasattr(match, "metadata") else match.get("metadata", {})
                 if not meta:
                     continue
-
                 text = meta.get("raw_text") or meta.get("text", "")
                 page_num = meta.get("page_number") or meta.get("page_start", 1)
                 try:
                     page_number = int(page_num)
                 except (ValueError, TypeError):
                     page_number = 1
-
                 clause_type = meta.get("clause_type") or meta.get("section_title") or "General"
-
                 results.append({
                     "text": text,
                     "page_number": page_number,
@@ -125,11 +100,10 @@ def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5)
 
             if results:
                 return results
+    except Exception as e:
+        logger.warning(f"[QueryService] Vector search error ({e}) — trying fallbacks.")
 
-        except Exception as e:
-            logger.warning(f"[QueryService] Pinecone query failed ({e}) — falling back to vector store service.")
-
-    # 2. Local fallback if Pinecone returned no results or had an error
+    # 2. Local index fallback
     try:
         from app.services.ai.vector_store import vector_store_service
         raw_docs = vector_store_service.search_similar(query=query, user_id=user_id, audit_id=doc_id, k=top_k)
@@ -141,7 +115,6 @@ def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5)
                 page_number = int(page_num)
             except (ValueError, TypeError):
                 page_number = 1
-
             clause_type = meta.get("clause_type") or meta.get("section_title") or "General"
             results.append({
                 "text": text,
@@ -149,8 +122,47 @@ def query_document_chunks(query: str, doc_id: str, user_id: str, top_k: int = 5)
                 "clause_type": clause_type,
                 "score": 0.85
             })
+        if results:
+            return results
     except Exception as fallback_err:
-        logger.error(f"[QueryService] Fallback retrieval error: {fallback_err}")
+        logger.warning(f"[QueryService] Local index fallback failed: {fallback_err}")
+
+    # 3. Direct MongoDB Document Fallback (survives container restarts)
+    try:
+        from app.core.database import get_database
+        db = get_database()
+        audit = await db["audits"].find_one({"_id": doc_id, "user_id": user_id})
+        if audit:
+            # Check clauses
+            for c in audit.get("clauses", []):
+                snippet = c.get("text") or c.get("snippet", "")
+                if snippet:
+                    results.append({
+                        "text": snippet,
+                        "page_number": c.get("page_number", 1),
+                        "clause_type": c.get("category", "Clause"),
+                        "score": 0.95
+                    })
+            # Check section summaries
+            for s in audit.get("section_summaries", []):
+                summary_text = s.get("summary") or s.get("text_snippet", "")
+                if summary_text:
+                    results.append({
+                        "text": summary_text,
+                        "page_number": s.get("page_start") or s.get("page_number", 1),
+                        "clause_type": s.get("section_title", "Section"),
+                        "score": 0.90
+                    })
+            # Check executive summary
+            if not results and audit.get("executive_summary"):
+                results.append({
+                    "text": audit["executive_summary"],
+                    "page_number": 1,
+                    "clause_type": "Executive Summary",
+                    "score": 1.0
+                })
+    except Exception as db_err:
+        logger.warning(f"[QueryService] MongoDB audit fallback failed: {db_err}")
 
     return results
 

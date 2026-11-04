@@ -94,8 +94,8 @@ async def generate_grounded_response(
     3. Calls Gemini with temperature=0.0 and ChatResponse schema.
     4. Returns clean, structured response aligning with frontend requirements.
     """
-    # Step 1: Retrieve context chunks from Pinecone / vector store
-    chunks = query_document_chunks(query=query, doc_id=doc_id, user_id=user_id, top_k=5)
+    # Step 1: Retrieve context chunks from Pinecone / vector store / MongoDB
+    chunks = await query_document_chunks(query=query, doc_id=doc_id, user_id=user_id, top_k=5)
 
     # Step 2: Empty retrieval fallback — return immediately without LLM invocation
     if not chunks:
