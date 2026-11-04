@@ -1,7 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, dashboard, library, audits, chat, compare, compliance, export
 import os
@@ -51,6 +52,24 @@ app.include_router(compare.router, prefix="/api", tags=["compare"])
 app.include_router(compliance.router, prefix="/api", tags=["compliance"])
 app.include_router(export.router, prefix="/api", tags=["export"])
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Server Error: {str(exc)}"},
+    )
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Auditor AI Backend API"}
+
+@app.get("/api/health")
+async def health_check():
+    from app.core.database import get_database
+    try:
+        db = get_database()
+        await db.command("ping")
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "error", "database": f"MongoDB connection failed: {str(e)}"}
